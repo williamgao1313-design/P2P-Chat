@@ -215,8 +215,8 @@ export default function App() {
     setCallState('calling');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
-      localStream.current = stream;
+      const constraints = { video: video ? { facingMode: "user" } : false, audio: true };
+const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
@@ -239,8 +239,8 @@ export default function App() {
     setActivePeerId(incomingCall.from);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: incomingCall.isVideo, audio: true });
-      localStream.current = stream;
+      const constraints = { video: incomingCall.isVideo ? { facingMode: "user" } : false, audio: true };
+const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
