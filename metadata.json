@@ -1,8 +1,0 @@
-{
-  "name": "P2P Chat",
-  "description": "A 1-on-1 chat application supporting text, images, voice messages, and video/voice calls without registration.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
-}
