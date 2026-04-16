@@ -44,6 +44,9 @@ export default function App() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStream = useRef<MediaStream | null>(null);
+  const remoteStream = useRef<MediaStream | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingInterval = useRef<NodeJS.Timeout | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -83,6 +86,18 @@ export default function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (callState === 'connected' || callState === 'calling') {
+      if (localVideoRef.current && localStream.current && localVideoRef.current.srcObject !== localStream.current) {
+        localVideoRef.current.srcObject = localStream.current;
+      }
+      if (remoteVideoRef.current && remoteStream.current && remoteVideoRef.current.srcObject !== remoteStream.current) {
+        remoteVideoRef.current.srcObject = remoteStream.current;
+      }
+    }
+  }, [callState]);
+
 
   // MQTT Connection and Message Handling
   useEffect(() => {
@@ -234,6 +249,7 @@ export default function App() {
     };
 
     pc.ontrack = (event) => {
+      remoteStream.current = event.streams[0];
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
       }
@@ -429,10 +445,13 @@ export default function App() {
     }
   };
 
-  const startRecording = async () => {
+  const startRecording = async (e?: React.TouchEvent | React.MouseEvent) => {
+    if (e) {
+      // Don't prevent default on touch start to allow normal touch behavior, 
+      // but we can prevent context menu later if needed.
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Safari might not support audio/webm, let MediaRecorder choose the default format
       const recorder = new MediaRecorder(stream);
       mediaRecorder.current = recorder;
       audioChunks.current = [];
@@ -442,7 +461,6 @@ export default function App() {
       };
 
       recorder.onstop = () => {
-        // Use the mimeType from the recorder to ensure compatibility
         const audioBlob = new Blob(audioChunks.current, { type: recorder.mimeType || 'audio/mp4' });
         const reader = new FileReader();
         reader.onload = () => {
@@ -452,20 +470,34 @@ export default function App() {
         };
         reader.readAsDataURL(audioBlob);
         stream.getTracks().forEach((track) => track.stop());
+        
+        if (recordingInterval.current) {
+          clearInterval(recordingInterval.current);
+        }
+        setRecordingTime(0);
       };
 
       recorder.start();
       setIsRecording(true);
+      setRecordingTime(0);
+      if (recordingInterval.current) clearInterval(recordingInterval.current);
+      recordingInterval.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
     } catch (err) {
       console.error('Error accessing microphone', err);
       alert('Could not access microphone. Please ensure you are using HTTPS and have granted permissions.');
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = (e?: React.TouchEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
     if (mediaRecorder.current && isRecording) {
       mediaRecorder.current.stop();
       setIsRecording(false);
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
+      }
     }
   };
 
@@ -670,15 +702,21 @@ export default function App() {
                   <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
                 </label>
                 
-                <div className="flex-1 bg-gray-100 rounded-2xl flex items-center px-4 py-2 min-h-[44px]">
-                  <input
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Message..."
-                    className="flex-1 bg-transparent border-none focus:outline-none py-1 text-[15px]"
-                  />
-                </div>
+                {isRecording ? (
+                  <div className="flex-1 bg-red-50 rounded-2xl flex items-center justify-center px-4 py-2 min-h-[44px] text-red-500 font-medium animate-pulse">
+                    Recording... {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                  </div>
+                ) : (
+                  <div className="flex-1 bg-gray-100 rounded-2xl flex items-center px-4 py-2 min-h-[44px]">
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      placeholder="Message..."
+                      className="flex-1 bg-transparent border-none focus:outline-none py-1 text-[15px]"
+                    />
+                  </div>
+                )}
 
                 {inputText.trim() ? (
                   <button
@@ -696,7 +734,7 @@ export default function App() {
                     onTouchStart={startRecording}
                     onTouchEnd={stopRecording}
                     className={cn(
-                      "p-3 rounded-full transition-colors flex-shrink-0 shadow-sm",
+                      "p-3 rounded-full transition-colors flex-shrink-0 shadow-sm select-none touch-none",
                       isRecording ? "bg-red-500 text-white animate-pulse" : "bg-blue-600 text-white hover:bg-blue-700"
                     )}
                   >
